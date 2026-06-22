@@ -1,0 +1,30 @@
+Discrete-time logit hazard model
+Rows used: 726
+Municipalities used: 93
+Adoption events: 93
+Log likelihood: -222.0666
+Converged: True in 6 iterations
+Clean model panel: /Users/rishabh/Projects/texas-policy-diffusion-assignment/data/refinement_6_eha_model_panel.csv
+Coefficient output: /Users/rishabh/Projects/texas-policy-diffusion-assignment/data/refinement_6_eha_logit_coefficients.csv
+
+Dropped incomplete rows: 13
+Dropped municipalities: Hallsburg, Pharr
+
+Learning mechanism coefficient
+term                           proportion_state_population_local_restriction
+coefficient_standardized                                            0.997395
+standard_error_standardized                                         0.132629
+z                                                                   7.520173
+p_value                                                                  0.0
+coefficient_original_scale                                         16.788358
+
+                                         term  coefficient_standardized  standard_error_standardized          z      p_value  coefficient_original_scale  is_learning_mechanism
+                                    intercept                 -2.302996                     0.144831 -15.901318 6.204555e-57                   -4.576803                  False
+                 ordinance_profile_population                 -0.947290                     1.390256  -0.681379 4.956320e-01                   -0.000004                  False
+                         municipal_population                  0.886659                     1.333694   0.664815 5.061690e-01                    0.000004                  False
+        percent_25_plus_high_school_or_higher                 -0.198935                     0.207487  -0.958786 3.376666e-01                   -0.013359                  False
+                     non_hispanic_white_share                  0.162826                     0.201401   0.808466 4.188223e-01                    0.005817                  False
+                            per_capita_income                 -0.044711                     0.167855  -0.266369 7.899552e-01                   -0.000004                  False
+                          per_capita_spending                  0.014789                     0.127470   0.116019 9.076372e-01                    0.000010                  False
+                      texas_smoker_percentage                 -0.060873                     0.174296  -0.349253 7.268992e-01                   -0.035778                  False
+proportion_state_population_local_restriction                  0.997395                     0.132629   7.520173 5.470401e-14                   16.788358                   True
