@@ -1,7 +1,7 @@
 # EHA Policy Diffusion
 
 TLDR; for coefficents look at refinement_6_eha_logit_coefficients.csv and
-kentucky_refinement_6_eha_logit_coefficients.csv
+kentucky_refinement_6_eha_logit_coefficients.csv under the **data** folder.
 
 ## Goal
 
