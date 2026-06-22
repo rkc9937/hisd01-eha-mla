@@ -10,10 +10,33 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 EHA_PANEL_PATH = os.path.join(DATA_DIR, "refinement_5_eha_panel.csv")
 MODEL_PANEL_PATH = os.path.join(DATA_DIR, "refinement_6_eha_model_panel.csv")
 COEFFICIENTS_PATH = os.path.join(DATA_DIR, "refinement_6_eha_logit_coefficients.csv")
+KENTUCKY_EHA_PANEL_PATH = os.path.join(DATA_DIR, "kentucky_refinement_5_eha_panel.csv")
+KENTUCKY_MODEL_PANEL_PATH = os.path.join(
+    DATA_DIR,
+    "kentucky_refinement_6_eha_model_panel.csv",
+)
+KENTUCKY_COEFFICIENTS_PATH = os.path.join(
+    DATA_DIR,
+    "kentucky_refinement_6_eha_logit_coefficients.csv",
+)
+KENTUCKY_SENSITIVITY_MODEL_PANEL_PATH = os.path.join(
+    DATA_DIR,
+    "kentucky_refinement_6_eha_model_panel_sensitivity.csv",
+)
+KENTUCKY_COMPLETE_MODEL_PANEL_PATH = os.path.join(
+    DATA_DIR,
+    "kentucky_refinement_6_eha_model_panel_complete.csv",
+)
+KENTUCKY_SMOKER_PATH = os.path.join(DATA_DIR, "kentucky_smoker_percentage_year.csv")
+KENTUCKY_IDEOLOGY_PATH = os.path.join(DATA_DIR, "kentucky_ideology_per_year.csv")
+KENTUCKY_TOBACCO_LOBBYING_PATH = os.path.join(
+    DATA_DIR,
+    "kentucky_tobacco_lobbying_2009_2023.csv",
+)
 
 TARGET = "adopted_this_year"
 LEARNING_MECHANISM = "proportion_state_population_local_restriction"
-COVARIATES = [
+TEXAS_COVARIATES = [
     "ordinance_profile_population",
     "municipal_population",
     "percent_25_plus_high_school_or_higher",
@@ -23,47 +46,324 @@ COVARIATES = [
     "texas_smoker_percentage",
     LEARNING_MECHANISM,
 ]
+KENTUCKY_COVARIATES = [
+    "municipal_population",
+    "percent_25_plus_high_school_or_higher",
+    "non_hispanic_white_share",
+    "per_capita_income",
+    "per_capita_spending",
+    "kentucky_smoker_percentage",
+    "nominate_state_government_ideology",
+    "tobacco_lobbyist_ratio",
+    LEARNING_MECHANISM,
+]
+KENTUCKY_COMPLETE_COVARIATES = [
+    "municipal_population",
+    "percent_25_plus_high_school_or_higher",
+    "non_hispanic_white_share",
+    "per_capita_income",
+    "per_capita_spending",
+    "kentucky_smoker_percentage",
+    LEARNING_MECHANISM,
+]
+KENTUCKY_SENSITIVITY_COVARIATES = [
+    "municipal_population",
+    "percent_25_plus_high_school_or_higher",
+    "non_hispanic_white_share",
+    "per_capita_income",
+    "per_capita_spending",
+    "kentucky_smoker_percentage",
+    "nominate_state_government_ideology",
+    "tobacco_lobbyist_ratio",
+    "tobacco_lobbyist_ratio_missing",
+    LEARNING_MECHANISM,
+]
 
 
 def main():
-    panel = load_model_panel()
-    fit = fit_logit_mle(panel, TARGET, COVARIATES)
-    coefficients = build_coefficient_table(fit)
+    if os.path.exists(COEFFICIENTS_PATH):
+        run_kentucky_models()
+        return
 
-    panel.to_csv(MODEL_PANEL_PATH, index=False)
-    coefficients.to_csv(COEFFICIENTS_PATH, index=False)
+    run_model(
+        "Texas",
+        EHA_PANEL_PATH,
+        MODEL_PANEL_PATH,
+        COEFFICIENTS_PATH,
+        TEXAS_COVARIATES,
+    )
 
-    print_model_summary(panel, fit, coefficients)
+
+def run_model(state_name, panel_path, model_panel_path, coefficients_path, covariates):
+    source_panel = pd.read_csv(panel_path)
+    panel, fit, coefficients = fit_model_from_source_panel(source_panel, covariates)
+    panel.to_csv(model_panel_path, index=False)
+    coefficients.to_csv(coefficients_path, index=False)
+
+    print_model_summary(
+        state_name,
+        panel,
+        fit,
+        coefficients,
+        model_panel_path,
+        coefficients_path,
+    )
 
 
-def load_model_panel():
-    panel = pd.read_csv(EHA_PANEL_PATH)
+def run_kentucky_models():
+    augmented_panel = build_kentucky_augmented_panel()
+
+    complete_panel, complete_fit, complete_coefficients = fit_model_from_source_panel(
+        augmented_panel,
+        KENTUCKY_COMPLETE_COVARIATES,
+    )
+    complete_coefficients.insert(0, "model", "complete")
+    complete_coefficients["n"] = complete_fit["n"]
+    complete_coefficients["events"] = complete_fit["events"]
+    complete_coefficients["log_likelihood"] = complete_fit["log_likelihood"]
+    complete_coefficients["converged"] = complete_fit["converged"]
+
+    primary_source_panel = augmented_panel.copy()
+    primary_source_panel["tobacco_lobbyist_ratio"] = primary_source_panel[
+        "tobacco_lobbyist_ratio_primary"
+    ]
+    primary_panel, primary_fit, primary_coefficients = fit_model_from_source_panel(
+        primary_source_panel,
+        KENTUCKY_COVARIATES,
+    )
+    primary_coefficients.insert(0, "model", "primary")
+    primary_coefficients["n"] = primary_fit["n"]
+    primary_coefficients["events"] = primary_fit["events"]
+    primary_coefficients["log_likelihood"] = primary_fit["log_likelihood"]
+    primary_coefficients["converged"] = primary_fit["converged"]
+
+    sensitivity_source_panel = augmented_panel.copy()
+    sensitivity_source_panel["tobacco_lobbyist_ratio"] = sensitivity_source_panel[
+        "tobacco_lobbyist_ratio_sensitivity"
+    ]
+    (
+        sensitivity_panel,
+        sensitivity_fit,
+        sensitivity_coefficients,
+    ) = fit_model_from_source_panel(
+        sensitivity_source_panel,
+        KENTUCKY_SENSITIVITY_COVARIATES,
+    )
+    sensitivity_coefficients.insert(0, "model", "sensitivity")
+    sensitivity_coefficients["n"] = sensitivity_fit["n"]
+    sensitivity_coefficients["events"] = sensitivity_fit["events"]
+    sensitivity_coefficients["log_likelihood"] = sensitivity_fit["log_likelihood"]
+    sensitivity_coefficients["converged"] = sensitivity_fit["converged"]
+
+    combined_coefficients = pd.concat(
+        [complete_coefficients, primary_coefficients, sensitivity_coefficients],
+        ignore_index=True,
+    )
+
+    complete_panel.to_csv(KENTUCKY_COMPLETE_MODEL_PANEL_PATH, index=False)
+    primary_panel.to_csv(KENTUCKY_MODEL_PANEL_PATH, index=False)
+    sensitivity_panel.to_csv(KENTUCKY_SENSITIVITY_MODEL_PANEL_PATH, index=False)
+    combined_coefficients.to_csv(KENTUCKY_COEFFICIENTS_PATH, index=False)
+
+    print_model_summary(
+        "Kentucky complete",
+        complete_panel,
+        complete_fit,
+        complete_coefficients,
+        KENTUCKY_COMPLETE_MODEL_PANEL_PATH,
+        KENTUCKY_COEFFICIENTS_PATH,
+    )
+    print()
+    print_model_summary(
+        "Kentucky primary",
+        primary_panel,
+        primary_fit,
+        primary_coefficients,
+        KENTUCKY_MODEL_PANEL_PATH,
+        KENTUCKY_COEFFICIENTS_PATH,
+    )
+    print()
+    print_model_summary(
+        "Kentucky sensitivity",
+        sensitivity_panel,
+        sensitivity_fit,
+        sensitivity_coefficients,
+        KENTUCKY_SENSITIVITY_MODEL_PANEL_PATH,
+        KENTUCKY_COEFFICIENTS_PATH,
+    )
+
+
+def fit_model_from_source_panel(source_panel, covariates):
+    panel, model_covariates = load_model_panel(source_panel, covariates)
+    fit = fit_logit_mle(panel, TARGET, model_covariates)
+    coefficients = build_coefficient_table(fit, LEARNING_MECHANISM)
+    return panel, fit, coefficients
+
+
+def build_kentucky_augmented_panel():
+    panel = pd.read_csv(KENTUCKY_EHA_PANEL_PATH)
+
+    panel = panel.drop(
+        columns=[
+            column
+            for column in [
+                "kentucky_smoker_percentage",
+                "nominate_state_government_ideology",
+                "tobacco_lobbyist_registrations",
+                "total_lobbyist_registrations",
+                "tobacco_lobbyist_ratio",
+                "tobacco_lobbyist_ratio_primary",
+                "tobacco_lobbyist_ratio_sensitivity",
+                "tobacco_lobbyist_ratio_missing",
+            ]
+            if column in panel.columns
+        ]
+    )
+
+    panel = panel.merge(kentucky_smoker_by_year(), on="Year", how="left")
+    panel = panel.merge(kentucky_ideology_by_year(panel["Year"]), on="Year", how="left")
+    panel = panel.merge(kentucky_tobacco_lobbying_by_year(), on="Year", how="left")
+    return panel
+
+
+def kentucky_smoker_by_year():
+    smoker = pd.read_csv(KENTUCKY_SMOKER_PATH)
+    return smoker.rename(
+        columns={
+            "Year": "Year",
+            "Percentage": "kentucky_smoker_percentage",
+        }
+    )[["Year", "kentucky_smoker_percentage"]]
+
+
+def kentucky_ideology_by_year(panel_years):
+    year_frame = pd.DataFrame(
+        {"Year": range(int(panel_years.min()), int(panel_years.max()) + 1)}
+    )
+    ideology = pd.read_csv(KENTUCKY_IDEOLOGY_PATH).rename(columns={"year": "Year"})
+    ideology = year_frame.merge(ideology, on="Year", how="left").sort_values("Year")
+    ideology["nominate_state_government_ideology"] = (
+        pd.to_numeric(
+            ideology["nominate_state_government_ideology"],
+            errors="coerce",
+        )
+        .interpolate()
+        .ffill()
+        .bfill()
+    )
+    return ideology
+
+
+def kentucky_tobacco_lobbying_by_year():
+    lobbying = pd.read_csv(KENTUCKY_TOBACCO_LOBBYING_PATH)
+    lobbying = lobbying.rename(columns={"year": "Year"}).sort_values("Year")
+    for column in [
+        "tobacco_lobbyist_registrations",
+        "total_lobbyist_registrations",
+        "tobacco_lobbyist_ratio",
+    ]:
+        lobbying[column] = pd.to_numeric(lobbying[column], errors="coerce")
+
+    observed_ratio = lobbying["tobacco_lobbyist_ratio"]
+    lobbying["tobacco_lobbyist_ratio_primary"] = observed_ratio.ffill()
+    lobbying["tobacco_lobbyist_ratio_sensitivity"] = observed_ratio.ffill()
+    lobbying["tobacco_lobbyist_ratio_sensitivity"] = lobbying[
+        "tobacco_lobbyist_ratio_sensitivity"
+    ].fillna(observed_ratio.mean())
+    lobbying["tobacco_lobbyist_ratio_missing"] = observed_ratio.isna().astype(int)
+
+    return lobbying[
+        [
+            "Year",
+            "tobacco_lobbyist_registrations",
+            "total_lobbyist_registrations",
+            "tobacco_lobbyist_ratio_primary",
+            "tobacco_lobbyist_ratio_sensitivity",
+            "tobacco_lobbyist_ratio_missing",
+        ]
+    ]
+
+
+def load_model_panel(panel_path, covariates):
+    if isinstance(panel_path, pd.DataFrame):
+        source_panel = panel_path.copy()
+    else:
+        source_panel = pd.read_csv(panel_path)
+
+    requested_covariates = list(covariates)
+    missing_columns = [
+        covariate
+        for covariate in requested_covariates
+        if covariate not in source_panel.columns
+    ]
+    if missing_columns:
+        raise RuntimeError(f"Missing model covariates: {missing_columns}")
+
+    omitted_covariates = [
+        covariate
+        for covariate in requested_covariates
+        if covariate != LEARNING_MECHANISM and source_panel[covariate].isna().all()
+    ]
+    covariates = [
+        covariate
+        for covariate in requested_covariates
+        if covariate == LEARNING_MECHANISM
+        or not source_panel[covariate].isna().all()
+    ]
     model_columns = [
         "Municipality",
-        "County",
         "Year",
         "Adoption Year",
         TARGET,
-        *COVARIATES,
+        *covariates,
     ]
-    panel = panel[model_columns].copy()
+    if "County" in source_panel.columns:
+        model_columns.insert(1, "County")
+    if "geography_type" in source_panel.columns:
+        model_columns.insert(1, "geography_type")
+    model_columns = [
+        column for column in model_columns if column in source_panel.columns
+    ]
+    panel = source_panel[model_columns].copy()
 
-    for column in [TARGET, *COVARIATES]:
+    for column in [TARGET, *covariates]:
         panel[column] = pd.to_numeric(panel[column], errors="coerce")
 
     before_rows = len(panel)
-    panel = panel.dropna(subset=[TARGET, *COVARIATES]).copy()
+    panel = panel.dropna(subset=[TARGET, *covariates]).copy()
     dropped_rows = before_rows - len(panel)
-    dropped_municipalities = sorted(
-        set(pd.read_csv(EHA_PANEL_PATH).loc[
-            lambda df: df[COVARIATES].isna().any(axis=1),
-            "Municipality",
-        ])
-    )
+
+    zero_variance_covariates = [
+        covariate
+        for covariate in covariates
+        if panel[covariate].nunique(dropna=True) <= 1
+    ]
+    if zero_variance_covariates:
+        covariates = [
+            covariate
+            for covariate in covariates
+            if covariate not in zero_variance_covariates
+        ]
+        panel = panel.drop(columns=zero_variance_covariates)
+
+    missing_covariates = [
+        covariate
+        for covariate in covariates
+        if source_panel[covariate].isna().any()
+    ]
+    if missing_covariates:
+        missing_mask = source_panel[missing_covariates].isna().any(axis=1)
+        dropped_municipalities = sorted(
+            set(source_panel.loc[missing_mask, "Municipality"])
+        )
+    else:
+        dropped_municipalities = []
 
     panel.attrs["dropped_rows"] = dropped_rows
     panel.attrs["dropped_municipalities"] = dropped_municipalities
-    return panel
+    panel.attrs["omitted_covariates"] = omitted_covariates
+    panel.attrs["zero_variance_covariates"] = zero_variance_covariates
+    return panel, covariates
 
 
 def fit_logit_mle(panel, target, covariates, max_iter=100, tolerance=1e-8):
@@ -109,7 +409,8 @@ def fit_logit_mle(panel, target, covariates, max_iter=100, tolerance=1e-8):
             break
 
     covariance = covariance_matrix(x, beta)
-    standard_errors = np.sqrt(np.diag(covariance))
+    covariance_diagonal = np.diag(covariance)
+    standard_errors = np.sqrt(np.where(covariance_diagonal < 0, np.nan, covariance_diagonal))
     z_scores = beta / standard_errors
     p_values = np.array([two_sided_normal_p_value(z) for z in z_scores])
 
@@ -163,7 +464,7 @@ def two_sided_normal_p_value(z_score):
     return math.erfc(abs(float(z_score)) / math.sqrt(2))
 
 
-def build_coefficient_table(fit):
+def build_coefficient_table(fit, learning_mechanism):
     return pd.DataFrame(
         {
             "term": fit["names"],
@@ -173,28 +474,40 @@ def build_coefficient_table(fit):
             "p_value": fit["p_values"],
             "coefficient_original_scale": fit["beta_original_scale"],
             "is_learning_mechanism": [
-                term == LEARNING_MECHANISM for term in fit["names"]
+                term == learning_mechanism for term in fit["names"]
             ],
         }
     )
 
 
-def print_model_summary(panel, fit, coefficients):
+def print_model_summary(
+    state_name,
+    panel,
+    fit,
+    coefficients,
+    model_panel_path,
+    coefficients_path,
+):
     learning_row = coefficients[
         coefficients["term"].eq(LEARNING_MECHANISM)
     ].iloc[0]
 
-    print("Discrete-time logit hazard model")
+    print(f"{state_name} discrete-time logit hazard model")
     print(f"Rows used: {fit['n']}")
     print(f"Municipalities used: {panel['Municipality'].nunique()}")
     print(f"Adoption events: {fit['events']}")
     print(f"Log likelihood: {fit['log_likelihood']:.4f}")
     print(f"Converged: {fit['converged']} in {fit['iterations']} iterations")
-    print(f"Clean model panel: {MODEL_PANEL_PATH}")
-    print(f"Coefficient output: {COEFFICIENTS_PATH}")
+    print(f"Clean model panel: {model_panel_path}")
+    print(f"Coefficient output: {coefficients_path}")
     print()
     print("Dropped incomplete rows:", panel.attrs["dropped_rows"])
     print("Dropped municipalities:", ", ".join(panel.attrs["dropped_municipalities"]))
+    print("Omitted all-missing covariates:", ", ".join(panel.attrs["omitted_covariates"]))
+    print(
+        "Omitted zero-variance covariates:",
+        ", ".join(panel.attrs["zero_variance_covariates"]),
+    )
     print()
     print("Learning mechanism coefficient")
     print(

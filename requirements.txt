@@ -3,3 +3,5 @@ requests
 pandas
 selenium
 numpy
+openpyxl
+pypdf

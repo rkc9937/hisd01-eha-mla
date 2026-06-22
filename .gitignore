@@ -2,6 +2,8 @@
 data/*
 !data/refinement_6_eha_model_panel.csv
 !data/refinement_6_eha_logit_coefficients.csv
+!data/kentucky_refinement_6_eha_logit_coefficients.csv
+!data/kentucky_refinement_6_eha_model_panel.csv
 web/__pycache__/
 /.venv/
 /__pycache__/
