@@ -5,3 +5,4 @@ selenium
 numpy
 openpyxl
 pypdf
+streamlit

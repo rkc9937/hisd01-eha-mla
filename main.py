@@ -19,6 +19,10 @@ KENTUCKY_COEFFICIENTS_PATH = os.path.join(
     DATA_DIR,
     "kentucky_refinement_6_eha_logit_coefficients.csv",
 )
+KENTUCKY_DIAGNOSTICS_PATH = os.path.join(
+    DATA_DIR,
+    "kentucky_refinement_6_eha_model_diagnostics.csv",
+)
 KENTUCKY_SENSITIVITY_MODEL_PANEL_PATH = os.path.join(
     DATA_DIR,
     "kentucky_refinement_6_eha_model_panel_sensitivity.csv",
@@ -159,11 +163,19 @@ def run_kentucky_models():
         [complete_coefficients, primary_coefficients, sensitivity_coefficients],
         ignore_index=True,
     )
+    diagnostics = pd.DataFrame(
+        [
+            build_diagnostics_row("complete", complete_panel, complete_fit),
+            build_diagnostics_row("primary", primary_panel, primary_fit),
+            build_diagnostics_row("sensitivity", sensitivity_panel, sensitivity_fit),
+        ]
+    )
 
     complete_panel.to_csv(KENTUCKY_COMPLETE_MODEL_PANEL_PATH, index=False)
     primary_panel.to_csv(KENTUCKY_MODEL_PANEL_PATH, index=False)
     sensitivity_panel.to_csv(KENTUCKY_SENSITIVITY_MODEL_PANEL_PATH, index=False)
     combined_coefficients.to_csv(KENTUCKY_COEFFICIENTS_PATH, index=False)
+    diagnostics.to_csv(KENTUCKY_DIAGNOSTICS_PATH, index=False)
 
     print_model_summary(
         "Kentucky complete",
@@ -198,6 +210,61 @@ def fit_model_from_source_panel(source_panel, covariates):
     fit = fit_logit_mle(panel, TARGET, model_covariates)
     coefficients = build_coefficient_table(fit, LEARNING_MECHANISM)
     return panel, fit, coefficients
+
+
+def build_diagnostics_row(model_name, panel, fit, threshold=0.5):
+    y = panel[TARGET].to_numpy(dtype=int)
+    probabilities = predicted_probabilities(panel, fit)
+    predictions = (probabilities >= threshold).astype(int)
+
+    true_positives = int(((predictions == 1) & (y == 1)).sum())
+    false_positives = int(((predictions == 1) & (y == 0)).sum())
+    true_negatives = int(((predictions == 0) & (y == 0)).sum())
+    false_negatives = int(((predictions == 0) & (y == 1)).sum())
+
+    return {
+        "model": model_name,
+        "rows": len(panel),
+        "municipalities": panel["Municipality"].nunique(),
+        "events": int(y.sum()),
+        "event_rate": float(y.mean()),
+        "threshold": threshold,
+        "accuracy_at_0_5": float((predictions == y).mean()),
+        "auc": auc_score(y, probabilities),
+        "true_positives": true_positives,
+        "false_positives": false_positives,
+        "true_negatives": true_negatives,
+        "false_negatives": false_negatives,
+        "mean_predicted_hazard": float(probabilities.mean()),
+        "mean_predicted_event_hazard": float(probabilities[y == 1].mean()),
+        "mean_predicted_non_event_hazard": float(probabilities[y == 0].mean()),
+        "log_likelihood": fit["log_likelihood"],
+        "converged": fit["converged"],
+    }
+
+
+def predicted_probabilities(panel, fit):
+    covariates = fit["names"][1:]
+    raw_x = panel[covariates].to_numpy(dtype=float)
+    standardized_x = (raw_x - fit["means"]) / fit["stds"]
+    x = np.column_stack([np.ones(len(panel)), standardized_x])
+    return sigmoid(x @ fit["beta_standardized"])
+
+
+def auc_score(y, probabilities):
+    y = np.asarray(y)
+    probabilities = np.asarray(probabilities)
+    positive_count = int((y == 1).sum())
+    negative_count = int((y == 0).sum())
+    if positive_count == 0 or negative_count == 0:
+        return np.nan
+
+    ranks = pd.Series(probabilities).rank(method="average").to_numpy()
+    positive_rank_sum = ranks[y == 1].sum()
+    return float(
+        (positive_rank_sum - positive_count * (positive_count + 1) / 2)
+        / (positive_count * negative_count)
+    )
 
 
 def build_kentucky_augmented_panel():
